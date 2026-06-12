@@ -1,0 +1,11 @@
+trade_id,notional,fixed_rate,effective,maturity,side
+SW01,25000000,0.0410,0,2,payer
+SW02,40000000,0.0395,0,3,receiver
+SW03,15000000,0.0380,0,5,payer
+SW04,50000000,0.0405,0,7,receiver
+SW05,20000000,0.0420,0,10,payer
+SW06,30000000,0.0400,0,10,receiver
+SW07,10000000,0.0415,0,15,payer
+SW08,35000000,0.0408,0,20,receiver
+SW09,12000000,0.0395,0,30,payer
+SW10,18000000,0.0402,0,5,receiver

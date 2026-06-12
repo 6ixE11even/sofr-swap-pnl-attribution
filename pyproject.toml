@@ -1,0 +1,29 @@
+[project]
+name = "sofr-swap-pnl-attribution"
+version = "0.1.0"
+description = "Bootstrap a SOFR curve, value a portfolio of vanilla interest-rate swaps, and attribute the daily P&L into carry, roll-down, and curve moves (level / slope / curvature)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Tejas Pandya", email = "tbp8777@nyu.edu" }]
+license = { text = "MIT" }
+keywords = ["interest-rate-swap", "sofr", "yield-curve", "pnl-attribution", "fixed-income", "quant"]
+
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "matplotlib>=3.8",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
