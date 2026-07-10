@@ -48,6 +48,42 @@ reset (exact on reset dates; a small, consistent approximation between them).
   key-rate durations, project the pillar-rate change onto **level / slope /
   curvature** basis shapes, and book the convexity and basis misfit as **residual**.
 
+## The math
+
+**Bootstrap.** A par swap of maturity $t_k$ with fixed rate $S_k$ satisfies
+$S_k \sum_{i=1}^{k} \tau_i \, DF_i = 1 - DF_k$. Writing the annuity accumulated so
+far as $A_{k-1} = \sum_{i<k} \tau_i DF_i$ and solving for the unknown discount factor:
+
+$$DF_k = \frac{1 - S_k \, A_{k-1}}{1 + S_k \, \tau_k}$$
+
+Forward substitution from the shortest pillar gives the whole curve; log-linear
+interpolation of $DF$ between pillars is equivalent to piecewise-flat instantaneous
+forwards.
+
+**Pricing.** The bond-minus-floater identity for a payer swap with notional $N$ and
+fixed rate $K$:
+
+$$V = N\left[\big(1 - DF(T)\big) - K \sum_i \tau_i \, DF(t_i)\right]$$
+
+The float leg collapses to $1 - DF(T)$ because a par floater marks at par on reset.
+DV01 is the bump-and-reprice derivative $\partial V / \partial y \cdot 1\text{bp}$.
+
+**Attribution.** Between days the change splits as
+
+$$\Delta V = \underbrace{\Delta V_{\text{time}}}_{\text{carry + roll-down}} + \underbrace{\sum_k \text{KRD}_k \, \Delta z_k}_{\text{linear rate move}} + \text{residual}$$
+
+where $\text{KRD}_k = \partial V / \partial z_k$ are key-rate durations (bump one
+pillar's zero rate, hold the rest). The pillar move $\Delta z$ is projected onto
+orthogonal level / slope / curvature shapes, so the buckets are additive by
+construction and the residual isolates convexity plus off-shape moves. The test
+suite asserts the sum reconciles to full revaluation at ~1e-10.
+
+## References
+
+- Hagan, P. & West, G. (2006), *Interpolation Methods for Curve Construction*, Applied Mathematical Finance 13(2).
+- Tuckman, B. & Serrat, A., *Fixed Income Securities* (3rd ed.) — key-rate durations, ch. 5.
+- Andersen, L. & Piterbarg, V. (2010), *Interest Rate Modeling*, Vol. I — curve building and swap mechanics.
+
 ## Project structure
 
 ```
