@@ -13,3 +13,6 @@ __pycache__/
 
 # NOTE: data/*.csv (sample quotes + book) and results/*.png|*.csv ARE tracked —
 # they make the demo runnable and the README self-illustrating.
+*.pyc
+*.egg-info/
+build/
