@@ -28,10 +28,17 @@ from sofr_swap.pricing import portfolio_npv
 
 
 def _carry(swaps: list[Swap], curve0: SofrCurve, t0: float, t1: float) -> float:
-    """Net coupon earned over [t0, t1]: float (≈ overnight SOFR) minus fixed."""
+    """Net coupon earned over [t0, t1]: float (≈ overnight SOFR) minus fixed.
+
+    Only swaps actually accruing over the window contribute. A forward-starting or
+    already-matured trade earns nothing, and counting it books carry against a leg
+    that is not paying — the error then reappears with the opposite sign in
+    roll-down, so the additive check still passes while both buckets are wrong.
+    """
     dt = year_fraction(t0, t1)
     overnight = float(curve0.forward_rate(0.0, max(t1 - t0, 1.0 / 365.0)))
-    return sum(s.sign * s.notional * (overnight - s.fixed_rate) * dt for s in swaps)
+    live = [s for s in swaps if s.effective <= t0 + 1e-9 and s.maturity > t0 + 1e-9]
+    return sum(s.sign * s.notional * (overnight - s.fixed_rate) * dt for s in live)
 
 
 def attribute(swaps: list[Swap], curve0: SofrCurve, curve1: SofrCurve,

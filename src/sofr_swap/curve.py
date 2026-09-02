@@ -4,7 +4,10 @@ The SOFR discount curve.
 Single-curve world: SOFR is used for both projection and discounting (standard for
 a collateralised USD swap book). The curve is a set of pillar discount factors with
 log-linear interpolation — i.e. piecewise-constant instantaneous forward rates,
-which keeps forwards sane between pillars.
+which keeps forwards sane between pillars. Past the last pillar the final segment's
+forward is carried flat; numpy's default clamp would hold the discount factor
+constant instead, which is a zero forward rate and silently wrong for any trade
+maturing beyond the longest quote.
 """
 from __future__ import annotations
 
@@ -20,8 +23,14 @@ class SofrCurve:
         self._log_df = np.log(np.asarray(dfs, dtype=float))
 
     def df(self, t):
-        """Discount factor at time t (years). Log-linear in t."""
-        return np.exp(np.interp(np.asarray(t, dtype=float), self.times, self._log_df))
+        """Discount factor at time t (years). Log-linear in t, flat-forward past the end."""
+        t = np.asarray(t, dtype=float)
+        log_df = np.interp(t, self.times, self._log_df)
+        if self.times.size >= 2:
+            t_end = self.times[-1]
+            slope = (self._log_df[-1] - self._log_df[-2]) / (t_end - self.times[-2])
+            log_df = np.where(t > t_end, self._log_df[-1] + slope * (t - t_end), log_df)
+        return np.exp(log_df)
 
     def zero_rate(self, t):
         """Continuously-compounded zero rate, z(t) = -ln df(t) / t."""

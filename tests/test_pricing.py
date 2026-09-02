@@ -53,3 +53,46 @@ def test_attribution_is_additive():
     # a clean +5bp parallel move should load almost entirely on "level"
     assert abs(pnl["level"]) > abs(pnl["slope"])
     assert np.isfinite(pnl["total"])
+
+
+def test_forward_starting_swap_prices_off_its_own_start():
+    """The float leg starts at `effective`, not at the valuation date.
+
+    Pricing a 5y5y as if it were already accruing put its par rate near 8.8%
+    instead of the ~4% the curve implies.
+    """
+    c = _curve()
+    fwd = Swap(1e7, 0.0, 5.0, 10.0, side="payer", trade_id="5y5y")
+    s = par_rate(c, fwd)
+    assert 0.030 < s < 0.050
+    assert abs(swap_npv(c, Swap(1e7, s, 5.0, 10.0, side="payer"))) < 1e-6
+
+
+def test_curve_extrapolates_flat_forward_not_flat_discount():
+    """Past the last pillar numpy's clamp held DF constant — a zero forward rate."""
+    c = _curve()
+    last = max(TENORS)
+    assert c.df(last + 5.0) < c.df(last)
+    f_in = c.forward_rate(last - 5.0, last)
+    f_out = c.forward_rate(last, last + 5.0)
+    assert abs(f_out - f_in) < 5e-3          # forward carries on, roughly flat
+    assert abs(c.zero_rate(last + 5.0) - c.zero_rate(last)) < 2e-3
+
+
+def test_par_rate_on_a_dead_swap_names_the_trade():
+    c = _curve()
+    try:
+        par_rate(c, Swap(1e7, 0.04, 0.0, 0.5, trade_id="SW99"))
+    except ValueError as e:
+        assert "SW99" in str(e)
+    else:
+        raise AssertionError("expected a ValueError, got a bare ZeroDivisionError")
+
+
+def test_carry_skips_swaps_that_are_not_accruing():
+    """A forward-starting trade pays no coupon today."""
+    from sofr_swap.attribution import _carry
+    c = _curve()
+    live = Swap(1e7, 0.04, 0.0, 10.0, "payer")
+    unstarted = Swap(1e7, 0.04, 5.0, 10.0, "payer")
+    assert _carry([live, unstarted], c, 0.0, 1 / 365) == _carry([live], c, 0.0, 1 / 365)
