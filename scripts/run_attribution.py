@@ -1,15 +1,24 @@
 """
-End-to-end demo:  python scripts/run_attribution.py
+Attribute one day of P&L on the swap book.
 
-Reads two days of SOFR par-swap quotes and a swap book, bootstraps a curve for
-each day, marks the book, and attributes the one-day P&L into carry, roll-down,
-and curve moves. Writes a table + two charts to results/.
+    uv run python scripts/run_attribution.py                 # the two most recent days
+    uv run python scripts/run_attribution.py --worst-day     # the biggest move in the sample
+    uv run python scripts/run_attribution.py --date 2020-03-09
+
+Curves are bootstrapped from real Treasury constant-maturity par yields pulled from
+FRED, on two consecutive business days. The book is marked on each, and the change is
+split into carry, roll-down and the level/slope/curvature of the curve move.
+
+The book itself is hypothetical - ten swaps, a net receiver position - because nobody
+publishes a real dealer's positions. The market data is not.
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +27,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from sofr_swap.attribution import attribute            # noqa: E402
 from sofr_swap.curve import SofrCurve                  # noqa: E402
 from sofr_swap.instruments import Swap                 # noqa: E402
+from sofr_swap.market import consecutive_pairs, rates_panel  # noqa: E402
 from sofr_swap.pricing import dv01, swap_npv           # noqa: E402
 from sofr_swap.viz import plot_curves, plot_waterfall  # noqa: E402
 
@@ -25,14 +35,34 @@ ONE_DAY = 1.0 / 365.0
 RESULTS = ROOT / "results"
 
 
-def load_curves() -> tuple[SofrCurve, SofrCurve, list[str]]:
-    q = pd.read_csv(ROOT / "data" / "market_quotes.csv")
-    dates = sorted(q["date"].unique())
-    curves = []
-    for d in dates[:2]:
-        day = q[q["date"] == d].sort_values("tenor")
-        curves.append(SofrCurve.bootstrap(day["tenor"].to_numpy(), day["par_rate"].to_numpy()))
-    return curves[0], curves[1], dates[:2]
+def load_curves(date: str | None, worst_day: bool) -> tuple[SofrCurve, SofrCurve, list[str]]:
+    """Two consecutive real curves: the pair ending on `date`, the latest, or the
+    single largest one-day curve move in the sample."""
+    rates = rates_panel()
+    tenors = np.array(rates.columns, dtype=float)
+    adjacent = consecutive_pairs(rates).to_numpy()
+
+    if worst_day:
+        # "Largest" in the sense that matters to a rates book: the biggest move in the
+        # ten-year, which is the pillar the book's DV01 is concentrated in. Only rows
+        # whose predecessor is the previous business day are eligible - see
+        # consecutive_pairs.
+        move = np.abs(rates[10].diff().to_numpy())
+        move[~adjacent] = -np.inf
+        i = int(np.nanargmax(move))
+    elif date is not None:
+        i = int(rates.index.get_indexer([pd.Timestamp(date)], method="nearest")[0])
+    else:
+        i = len(rates) - 1
+
+    if not adjacent[i]:
+        raise ValueError(f"{rates.index[i]:%Y-%m-%d} has no preceding business day in the "
+                         "pillar history; the curve is incomplete around it")
+    pair = rates.iloc[[i - 1, i]]
+    curves = [SofrCurve.bootstrap(tenors, row.to_numpy()) for _, row in pair.iterrows()]
+    move = (pair.iloc[1] - pair.iloc[0]) * 1e4
+    print("curve move (bp): " + "  ".join(f"{int(t)}y {m:+.0f}" for t, m in move.items()))
+    return curves[0], curves[1], [f"{d:%Y-%m-%d}" for d in pair.index]
 
 
 def load_book() -> list[Swap]:
@@ -42,7 +72,13 @@ def load_book() -> list[Swap]:
 
 
 def main() -> None:
-    curve0, curve1, dates = load_curves()
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--date", help="value the book on this date and the day before it")
+    ap.add_argument("--worst-day", action="store_true",
+                    help="use the largest one-day move in the ten-year in the sample")
+    args = ap.parse_args()
+
+    curve0, curve1, dates = load_curves(args.date, args.worst_day)
     book = load_book()
 
     # Per-trade marks (day 0).
